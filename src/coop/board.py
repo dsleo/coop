@@ -100,8 +100,8 @@ def _edit_manifest(board_repo: str, message: str, mutate: Callable[[dict[str, An
     return False
 
 
-def create_board(board_repo: str) -> None:
-    run_gh(["repo", "create", board_repo, "--private", "--add-readme", "--description", "coop board: repos friends can help on"])
+def create_board(board_repo: str, public: bool = False) -> None:
+    run_gh(["repo", "create", board_repo, "--public" if public else "--private", "--add-readme", "--description", "coop board: repos friends can help on"])
     _put_manifest(board_repo, {"repos": []}, None, "coop: init board")
 
 

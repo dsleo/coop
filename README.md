@@ -70,8 +70,10 @@ The group needs: **one** person creates the board (Part A); **everyone** does Pa
 1. Install the prerequisites (see Part B, steps 1 to 3).
 2. Create the private board repo and configure yourself against it. Replace `my-group` with your GitHub user or org:
    ```bash
-   coop init my-group/coop-board --create
+   coop init my-group/coop-board --create            # private (default)
+   coop init my-group/coop-board --create --public   # public: anyone can read the repo list
    ```
+   Public or private, only people you `coop invite` can edit the board or claim issues.
 3. Invite each friend (write access to the board):
    ```bash
    coop invite alice

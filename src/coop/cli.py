@@ -132,15 +132,16 @@ def auto(
 @app.command()
 def init(
     board_repo: str = typer.Argument(..., help="Shared board repo, e.g. my-group/coop-board"),
-    create: bool = typer.Option(False, "--create", help="Create the (private) board repo first. Only one person does this."),
+    create: bool = typer.Option(False, "--create", help="Create the board repo first. Only one person does this."),
+    public: bool = typer.Option(False, "--public", help="With --create: make the board public (default private)."),
     provider: Provider = typer.Option(Provider.claude, "--provider", "-p"),
     max_tokens: int = typer.Option(100_000, "--max-tokens", "-t"),
 ) -> None:
     """Configure coop with the group's board repo (and optionally create it)."""
     me = current_github_user()  # fails early if `gh` is not logged in
     if create:
-        create_board(board_repo)
-        console.print(f"[green]Created private board repo {board_repo}[/green]")
+        create_board(board_repo, public)
+        console.print(f"[green]Created {'public' if public else 'private'} board repo {board_repo}[/green]")
     list_registered_repos(board_repo)  # verifies access, with a helpful error otherwise
     providers = detect_providers()
     cfg = load_config()
