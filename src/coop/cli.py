@@ -19,6 +19,8 @@ from coop.auto import claim_and_run, run_auto_once
 from coop.board import (
     GhError,
     accept_invitation,
+    repo_collaborators,
+    repo_invitees,
     invite_message,
     sync_access,
     create_board,
@@ -215,6 +217,24 @@ def invite(
     console.print(f"[green]Invited {user} to {target} with write access. They accept with {hint}.[/green]")
     if target == board:
         console.print(f"\n[bold]Send them this (GitHub's invitation email can't carry it):[/bold]\n\n{invite_message(target, user.lstrip('@'))}")
+
+
+@app.command()
+def members(
+    repo: str | None = typer.Argument(None, help="Repo to check (default: the board repo)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Show who has joined the board and who still has a pending invitation."""
+    target = repo or require_board_repo(load_config())
+    joined, pending = repo_collaborators(target), repo_invitees(target)
+    if json_out:
+        console.print_json(data={"repo": target, "joined": joined, "pending": pending})
+        return
+    console.print(f"Board: {target}")
+    for u in joined:
+        console.print(f"  [green]joined[/green]   {u}")
+    for u in pending:
+        console.print(f"  [yellow]pending[/yellow]  {u}")
 
 
 @app.command()

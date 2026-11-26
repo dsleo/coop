@@ -232,6 +232,11 @@ def repo_collaborators(repo: str) -> list[str]:
     return run_gh(["api", f"repos/{repo}/collaborators", "--paginate", "--jq", ".[].login"]).split()
 
 
+def repo_invitees(repo: str) -> list[str]:
+    """GitHub users with a pending (not yet accepted) invitation to `repo`."""
+    return run_gh(["api", f"repos/{repo}/invitations", "--paginate", "--jq", ".[].invitee.login"]).split()
+
+
 def has_open_coop_issues(repo: str) -> bool:
     raw = run_gh(["api", f"repos/{repo}/issues", "-X", "GET", "-f", f"labels={LABEL_HELP}", "-f", "state=open", "-f", "per_page=100"], check=False)
     return any("pull_request" not in i for i in json.loads(raw or "[]"))

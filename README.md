@@ -307,6 +307,7 @@ Token counts are **estimates** (see [Security](#security) for the hard stops: ti
 | `coop repos` | Registered repos + your local trust tier |
 | `coop trust <handle \| owner/repo> -l verified` | Raise your local trust for a friend or repo |
 | `coop invite <handle> [owner/repo]` | Give someone write access (default: the board repo) |
+| `coop members [owner/repo]` | Who has joined the board and who still has a pending invitation |
 | `coop init <board> [--create] [--public]` | Point coop at a board (accepts your pending invitation to it); `--create` makes the repo |
 | `coop stats` | Local token usage (estimates) and PRs by provider |
 | `coop doctor [--json]` | Check prerequisites and setup; prints the fix for anything missing |
