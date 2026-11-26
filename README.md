@@ -179,7 +179,7 @@ coop init dsleo/coop-board        # add -p codex / -t 150000 to change defaults
 - `coop init` points your coop at **one** board. Everyone in the group uses the same board name.
 - If you were invited to that board and haven't accepted yet, `init` accepts **that invitation** for you (it only ever accepts the board you named).
 - Then it checks it can read the board and saves the name, your default provider and token budget.
-- **`coop accept` is a different thing:** it handles GitHub invitations to *other people's repos*, which you get later when a friend flags an issue and gives you write access. It lists each invitation and asks before accepting; `coop accept owner/repo` accepts just that one, `--list` only shows them.
+- **`coop accept` is a different thing:** it handles GitHub invitations to *other people's repos*, which you get later when a friend flags an issue and gives you write access. It is interactive: it first prints a table of every pending invitation (repo, who invited you, access level, and whether the repo is on your coop board), then asks about each one. The default answer is yes only for repos on your board. Shortcuts: `coop accept --list` only shows the table; `coop accept owner/repo` accepts that one without asking; `coop accept --yes` accepts every invitation to a repo on your board and leaves the rest (add `--all` to accept those too).
 - Being in several groups? Run `coop init <other-board>` to switch boards.
 
 </details>
@@ -315,7 +315,7 @@ Token counts are **estimates** (see [Security](#security) for the hard stops: ti
 | `coop stats` | Local token usage (estimates) and PRs by provider |
 | `coop doctor [--json]` | Check prerequisites and setup; prints the fix for anything missing |
 | `coop install-skill [-t claude\|codex\|gemini]` | Teach your AI agent CLIs how to use coop |
-| `coop accept [owner/repo] [--list] [--yes] [--json]` | List invitations; accept one repo, all (`--yes`), or ask one by one |
+| `coop accept [owner/repo] [--list] [--yes [--all]] [--json]` | Show pending invitations (flagging which repos are on your board), then ask one by one; `--yes` accepts only board repos |
 | `coop mcp` | Optional MCP server for desktop apps |
 
 Config lives in `~/.config/coop/`: `config.toml` (board, default provider and budget, `max_turns`, `max_minutes`) and `trust.toml` (your trust tiers).

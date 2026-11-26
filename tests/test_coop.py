@@ -202,3 +202,25 @@ def test_init_accepts_pending_invitation_for_the_named_board_only(monkeypatch):
     monkeypatch.setattr(cli, "accept_invitation", lambda i: state["accepted"].append(i))
     r = CliRunner().invoke(cli.app, ["init", "grp/coop-board"])
     assert r.exit_code == 0 and state["accepted"] == [2]  # the other repo's invitation is untouched
+
+
+def test_accept_yes_only_takes_board_repos_unless_all(monkeypatch):
+    from typer.testing import CliRunner
+
+    from coop import cli
+    from coop.board import BoardRepoEntry
+    from coop.config import CoopConfig
+
+    monkeypatch.setattr(cli, "load_config", lambda: CoopConfig(board_repo="g/b"))
+    monkeypatch.setattr(cli, "list_registered_repos", lambda b: [BoardRepoEntry("alice/app")])
+    inv = lambda i, r: {"id": i, "repository": {"full_name": r}, "inviter": {"login": "x"}, "permissions": "write"}
+    monkeypatch.setattr(cli, "pending_invitations", lambda: [inv(1, "alice/app"), inv(2, "stranger/thing")])
+    got = []
+    monkeypatch.setattr(cli, "accept_invitation", lambda i: got.append(i))
+    assert CliRunner().invoke(cli.app, ["accept", "--yes"]).exit_code == 0 and got == [1]
+    got.clear()
+    CliRunner().invoke(cli.app, ["accept", "--yes", "--all"])
+    assert got == [1, 2]
+    got.clear()
+    CliRunner().invoke(cli.app, ["accept"], input="\n\n")  # defaults: yes for board repo, no for stranger
+    assert got == [1]

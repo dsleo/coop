@@ -200,28 +200,50 @@ def invite(
 @app.command()
 def accept(
     repo: str | None = typer.Argument(None, help="Accept only the invitation to this owner/repo, without asking"),
-    list_only: bool = typer.Option(False, "--list", help="Only list pending invitations (accepts nothing)"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Accept all pending invitations without asking"),
+    list_only: bool = typer.Option(False, "--list", help="Only show pending invitations (accepts nothing)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Accept, without asking, every invitation to a repo on your board"),
+    all_: bool = typer.Option(False, "--all", help="With --yes: also accept invitations to repos that are NOT on your board"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Review and accept pending GitHub repository invitations."""
-    invs = pending_invitations()
-    rows = [{"id": i["id"], "repo": i["repository"]["full_name"], "invited_by": i["inviter"]["login"]} for i in invs]
+    """Show pending GitHub repo invitations and accept them (asks one by one unless told otherwise)."""
+    cfg = load_config()
+    on_board = {e.repo.lower() for e in list_registered_repos(cfg.board_repo)} if cfg.board_repo else set()
+    rows = [
+        {"id": i["id"], "repo": i["repository"]["full_name"], "invited_by": i["inviter"]["login"],
+         "permission": i.get("permissions", "?"), "on_board": i["repository"]["full_name"].lower() in on_board}
+        for i in pending_invitations()
+    ]
+    if json_out and list_only:
+        emit(rows)
+        return
+    if not rows:
+        emit({"accepted": []}) if json_out else console.print("No pending invitations.")
+        return
+    if not json_out:
+        table = Table(title="Pending repository invitations")
+        for col in ("Repository", "Invited by", "Access", "On your coop board?"):
+            table.add_column(col)
+        for r in rows:
+            table.add_row(r["repo"], r["invited_by"], r["permission"], "[green]yes[/green]" if r["on_board"] else "[yellow]no (not a coop repo)[/yellow]")
+        console.print(table)
     if list_only:
-        emit(rows) if json_out else console.print("\n".join(f"{r['repo']} (from {r['invited_by']})" for r in rows) or "No pending invitations.")
         return
     accepted = []
     for r in rows:
         if repo and r["repo"].lower() != repo.lower():
             continue
-        if repo or yes or typer.confirm(f"Accept invitation to {r['repo']} from {r['invited_by']}?"):
+        if repo:
+            ok = True
+        elif yes:
+            ok = r["on_board"] or all_
+        else:  # interactive: default yes only for repos on your board
+            ok = typer.confirm(f"Accept {r['repo']} (from {r['invited_by']}, {r['permission']} access)?", default=r["on_board"])
+        if ok:
             accept_invitation(r["id"])
             accepted.append(r["repo"])
             console.print(f"[green]Joined {r['repo']}[/green]")
     if json_out:
         emit({"accepted": accepted})
-    elif not rows:
-        console.print("No pending invitations.")
 
 
 @app.command()
