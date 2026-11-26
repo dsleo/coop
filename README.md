@@ -34,10 +34,12 @@ You don't have to type coop commands yourself. Any agent that can run shell comm
 **Install the skill with one command** (works with Claude Code, Codex, Cursor and [many more](https://github.com/vercel-labs/skills/blob/main/docs/agents.md); needs Node 22.20+):
 
 ```bash
-npx skills add dsleo/coop -g
+npx skills add dsleo/coop -g -a claude-code -y
 ```
 
-This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI, which finds the guide at `skills/coop/SKILL.md` in this repo and lets you pick the agents to install it to (`-g` = for all your projects). Then just ask your agent: *"set up coop (my board is `dsleo/coop-board`) and tell me if there's an issue I can help with"*. The skill tells it how to install the `coop` CLI itself, so you don't need to install anything else first. It asks before installing, and the one step it can't do for you is `gh auth login` (interactive: you run it in your own terminal).
+That installs it for Claude Code with no prompts. Add more agents with extra `-a` flags (for example `-a codex -a gemini-cli`), or drop `-a ... -y` to pick agents interactively (Claude Code is under "Additional agents" in that list: tick it with space before pressing Enter).
+
+This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI, which finds the guide at `skills/coop/SKILL.md` in this repo and installs it for the agents you name (`-g` = for all your projects). Then just ask your agent: *"set up coop (my board is `dsleo/coop-board`) and tell me if there's an issue I can help with"*. The skill tells it how to install the `coop` CLI itself, so you don't need to install anything else first. It asks before installing, and the one step it can't do for you is `gh auth login` (interactive: you run it in your own terminal).
 
 No Node? Install coop by hand (see [Installation](#installation)), then use `coop install-skill` below.
 
