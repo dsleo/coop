@@ -138,3 +138,32 @@ def test_claim_refuses_issue_already_claimed_by_someone_else(monkeypatch):
     taken = issue(); taken.assignees = ["alice"]
     monkeypatch.setattr(board, "fetch_single_issue", lambda r, n, b=0: taken)
     assert board.claim_issue("alice/app", 2, "zed") is False
+
+
+def test_install_skill_writes_claude_skill_and_idempotent_codex_block(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from coop.cli import app
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for _ in range(2):  # second run must replace, not duplicate
+        assert CliRunner().invoke(app, ["install-skill", "-t", "claude"]).exit_code == 0
+        assert CliRunner().invoke(app, ["install-skill", "-t", "codex"]).exit_code == 0
+    skill = (tmp_path / ".claude/skills/coop/SKILL.md").read_text()
+    assert skill.startswith("---\nname: coop")
+    agents = (tmp_path / ".codex/AGENTS.md").read_text()
+    assert agents.count("<!-- coop:start -->") == 1 and "coop doctor --json" in agents and "name: coop" not in agents
+
+
+def test_doctor_json_shape(monkeypatch):
+    import json
+
+    from typer.testing import CliRunner
+
+    from coop import doctor
+    from coop.cli import app
+
+    monkeypatch.setattr(doctor, "run_checks", lambda: [{"name": "x", "ok": False, "detail": "d", "fix": "do y", "required": True}])
+    r = CliRunner().invoke(app, ["doctor", "--json"])
+    out = json.loads(r.stdout)
+    assert r.exit_code == 1 and out["ready"] is False and out["checks"][0]["fix"] == "do y"

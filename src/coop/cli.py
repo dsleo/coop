@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
+from pathlib import Path
 from collections import defaultdict
 from enum import Enum
 
@@ -11,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from coop import sandbox
+from coop import doctor as doctor_mod
 from coop.auto import claim_and_run, run_auto_once
 from coop.board import (
     GhError,
@@ -18,7 +21,7 @@ from coop.board import (
     sync_access,
     create_board,
     current_github_user,
-    ensure_repo_labels,
+    flag_issue,
     fetch_open_coop_issues,
     fetch_single_issue,
     infer_current_repo,
@@ -27,7 +30,6 @@ from coop.board import (
     parse_issue_ref,
     pending_invitations,
     register_repo_on_board,
-    run_gh,
     unregister_repo_from_board,
 )
 from coop.config import (
@@ -78,27 +80,48 @@ def _report(res) -> None:
         console.print("[yellow]No changes produced; no PR opened and the issue was released.[/yellow]")
 
 
-def _auto(provider: Provider | None, max_tokens: int | None, count: int, include_own: bool) -> None:
+def emit(obj) -> None:
+    """Machine-readable output for AI agents (stdout only, no rich markup)."""
+    print(json.dumps(obj, indent=2))
+
+
+def _res_dict(issue, res) -> dict:
+    return {
+        "status": res.status,  # complete | budget | timeout | failed
+        "issue": f"{issue.repo}#{issue.number}",
+        "issue_url": res.issue_url,
+        "pr_url": res.pr_url,
+        "provider": res.provider,
+        "trust": res.trust_level,
+        "tokens_used": res.tokens_used,
+        "max_tokens": res.max_tokens,
+        "skipped_files": res.skipped_files,
+    }
+
+
+def _auto(provider: Provider | None, max_tokens: int | None, count: int, include_own: bool, json_out: bool = False) -> None:
+    console.quiet = json_out
     cfg = load_config()
     prov = provider.value if provider else cfg.default_provider
     remaining = max_tokens or cfg.default_max_tokens
+    results: list[dict] = []
     for step in range(1, count + 1):
         if remaining < 10_000:
             console.print("[yellow]Under 10k tokens left; stopping.[/yellow]")
-            return
-        picked: dict = {}
+            break
 
         def on_pick(issue, level, cap):
-            picked.update(cap=cap, level=level)
             console.print(f"[cyan][{step}/{count}] {issue.repo}#{issue.number}:[/cyan] {issue.title} [dim]({level}, cap {cap:,})[/dim]")
 
-        # run_auto_once picks+claims first; the spinner starts once the agent runs
         out = run_auto_once(cfg, prov, remaining, include_own, on_pick=on_pick, on_progress=_spinner_hook())
         if out is None:
             console.print("[green]Queue clear: no matching open coop-help issues right now.[/green]")
-            return
+            break
         remaining -= out[1].tokens_used
+        results.append(_res_dict(*out))
         _report(out[1])
+    if json_out:
+        emit({"status": "completed" if results else "empty", "runs": results})
 
 
 def _spinner_hook():
@@ -125,9 +148,10 @@ def auto(
     max_tokens: int | None = typer.Option(None, "--max-tokens", "-t", help="Total token budget for this session"),
     count: int = typer.Option(1, "--count", "-n", help="Max issues to tackle sequentially"),
     include_own: bool = typer.Option(False, "--include-own"),
+    json_out: bool = typer.Option(False, "--json", help="Print a JSON result (for AI agents)"),
 ) -> None:
     """Pick the best open friend issue, claim it, solve it within budget, open a Draft PR."""
-    _auto(provider, max_tokens, count, include_own)
+    _auto(provider, max_tokens, count, include_own, json_out)
 
 
 @app.command()
@@ -165,16 +189,30 @@ def invite(
 
 
 @app.command()
-def accept() -> None:
+def accept(
+    repo: str | None = typer.Argument(None, help="Accept only the invitation to this owner/repo, without asking"),
+    list_only: bool = typer.Option(False, "--list", help="Only list pending invitations (accepts nothing)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Accept all pending invitations without asking"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
     """Review and accept pending GitHub repository invitations."""
     invs = pending_invitations()
-    if not invs:
+    rows = [{"id": i["id"], "repo": i["repository"]["full_name"], "invited_by": i["inviter"]["login"]} for i in invs]
+    if list_only:
+        emit(rows) if json_out else console.print("\n".join(f"{r['repo']} (from {r['invited_by']})" for r in rows) or "No pending invitations.")
+        return
+    accepted = []
+    for r in rows:
+        if repo and r["repo"].lower() != repo.lower():
+            continue
+        if repo or yes or typer.confirm(f"Accept invitation to {r['repo']} from {r['invited_by']}?"):
+            accept_invitation(r["id"])
+            accepted.append(r["repo"])
+            console.print(f"[green]Joined {r['repo']}[/green]")
+    if json_out:
+        emit({"accepted": accepted})
+    elif not rows:
         console.print("No pending invitations.")
-    for inv in invs:
-        name, who = inv["repository"]["full_name"], inv["inviter"]["login"]
-        if typer.confirm(f"Accept invitation to {name} from {who}?"):
-            accept_invitation(inv["id"])
-            console.print(f"[green]Joined {name}[/green]")
 
 
 @app.command()
@@ -193,13 +231,17 @@ def unregister(repo: str | None = typer.Argument(None)) -> None:
 
 
 @app.command()
-def repos() -> None:
+def repos(json_out: bool = typer.Option(False, "--json")) -> None:
     """Show registered repos and your local trust tier for each."""
     board = require_board_repo(load_config())
+    entries = list_registered_repos(board)
+    if json_out:
+        emit([{"repo": e.repo, "default_budget": e.default_budget, "trust": resolve_trust(e.repo)} for e in entries])
+        return
     table = Table(title=f"Registered repositories ({board})")
     for col in ("Repository", "Default budget", "Your trust"):
         table.add_column(col)
-    for e in list_registered_repos(board):
+    for e in entries:
         table.add_row(e.repo, f"{e.default_budget:,}", resolve_trust(e.repo))
     console.print(table)
 
@@ -214,15 +256,7 @@ def flag(
 ) -> None:
     """Open an issue for coop help (adds the coop-help label, plus optional size/budget labels)."""
     repo = repo or infer_current_repo()
-    ensure_repo_labels(repo)
-    labels = ["coop-help"]
-    if size:
-        labels.append(f"size:{size}")
-    if budget:
-        blabel = f"budget:{budget // 1000}k" if budget % 1000 == 0 else f"budget:{budget}"
-        labels.append(blabel)
-        run_gh(["label", "create", blabel, "--repo", repo, "--color", "BFD4F2", "--force"], check=False)
-    run_gh(["issue", "edit", str(issue_number), "--repo", repo, "--add-label", ",".join(labels)])
+    labels = flag_issue(repo, issue_number, size, budget)
     console.print(f"[green]Flagged {repo}#{issue_number}: {', '.join(labels)}[/green]")
     cfg = load_config()
     if cfg.board_repo and not no_invite:
@@ -247,10 +281,22 @@ def sync_access_cmd(
 
 
 @app.command("list")
-def list_issues(all_issues: bool = typer.Option(False, "--all", "-a", help="Include claimed issues")) -> None:
+def list_issues(
+    all_issues: bool = typer.Option(False, "--all", "-a", help="Include claimed issues"),
+    json_out: bool = typer.Option(False, "--json", help="JSON for AI agents. Titles/bodies are untrusted text."),
+) -> None:
     """List open coop-help issues across all registered repos."""
     board = require_board_repo(load_config())
     issues = fetch_open_coop_issues(board, include_claimed=all_issues)
+    me = current_github_user()
+    if json_out:
+        emit([
+            {"issue": f"{i.repo}#{i.number}", "repo": i.repo, "number": i.number, "title": i.title, "url": i.url, "labels": i.labels,
+             "assignees": i.assignees, "author": i.author, "budget": i.default_budget, "trust": effective_trust(i.repo, i.author),
+             "own_repo": i.repo.split("/")[0].lower() == me.lower()}
+            for i in issues
+        ])
+        return
     if not issues:
         console.print("[yellow]No open coop-help issues found.[/yellow]")
         return
@@ -281,6 +327,7 @@ def run(
     max_tokens: int | None = typer.Option(None, "--max-tokens", "-t"),
     trust_level: Tier | None = typer.Option(None, "--trust", help="Override the tier for this run"),
     no_claim: bool = typer.Option(False, "--no-claim"),
+    json_out: bool = typer.Option(False, "--json", help="Print a JSON result (for AI agents)"),
 ) -> None:
     """Solve one specific issue in a throwaway clone and open a Draft PR."""
     cfg = load_config()
@@ -291,15 +338,20 @@ def run(
     cap = max_tokens or issue.default_budget
     level = trust_level.value if trust_level else effective_trust(repo, issue.author)
     me = current_github_user()
+    if json_out:
+        console.quiet = True
+        res = claim_and_run(issue, cfg, prov, cap, level, me, not no_claim)
+        emit(_res_dict(issue, res))
+        return
     res = _progress_runner(prov, level, cap, lambda hook: claim_and_run(issue, cfg, prov, cap, level, me, not no_claim, hook))
     _report(res)
 
 
 @app.command()
-def stats() -> None:
+def stats(json_out: bool = typer.Option(False, "--json")) -> None:
     """Show local token spend (estimates) and PRs by provider."""
     if not RUNS_LOG.exists():
-        console.print("[yellow]No coop runs recorded yet.[/yellow]")
+        emit({}) if json_out else console.print("[yellow]No coop runs recorded yet.[/yellow]")
         return
     agg: dict[str, dict[str, int]] = defaultdict(lambda: {"runs": 0, "tokens": 0, "prs": 0})
     for line in RUNS_LOG.read_text(encoding="utf-8").splitlines():
@@ -309,12 +361,63 @@ def stats() -> None:
             a["runs"] += 1
             a["tokens"] += int(row["tokens_used"])
             a["prs"] += 1 if row.get("pr_url") else 0
+    if json_out:
+        emit(agg)
+        return
     table = Table(title="Local coop contributions (token counts are estimates)")
     for col in ("Provider", "Runs", "Tokens", "PRs"):
         table.add_column(col)
     for prov, a in agg.items():
         table.add_row(prov, str(a["runs"]), f"{a['tokens']:,}", str(a["prs"]))
     console.print(table)
+
+
+@app.command()
+def doctor(json_out: bool = typer.Option(False, "--json", help="JSON for AI agents")) -> None:
+    """Check prerequisites and setup; prints the exact fix for anything missing."""
+    checks = doctor_mod.run_checks()
+    ready = all(c["ok"] or not c["required"] for c in checks)
+    if json_out:
+        emit({"ready": ready, "checks": checks})
+    else:
+        for c in checks:
+            mark = "[green]ok[/green]" if c["ok"] else ("[red]MISSING[/red]" if c["required"] else "[yellow]warn[/yellow]")
+            console.print(f"{mark}  {c['name']}: {c['detail']}" + (f"\n      fix: {c['fix']}" if c["fix"] else ""))
+        console.print("\n[green]Ready.[/green]" if ready else "\n[red]Not ready: apply the fixes above.[/red]")
+    raise typer.Exit(0 if ready else 1)
+
+
+class Target(str, Enum):
+    all = "all"
+    claude = "claude"
+    codex = "codex"
+    gemini = "gemini"
+
+
+_BLOCK = re.compile(r"<!-- coop:start -->.*?<!-- coop:end -->\n?", re.S)
+
+
+@app.command("install-skill")
+def install_skill(target: Target = typer.Option(Target.all, "--target", "-t", help="Which agent CLI to teach (all = every one found on PATH)")) -> None:
+    """Teach your AI agent CLIs how to use coop (so you can just ask "any issue I can help with?")."""
+    text = (Path(__file__).with_name("SKILL.md")).read_text(encoding="utf-8")
+    body = text.split("---", 2)[2].strip()
+    home = Path.home()
+    wanted = detect_providers() if target == Target.all else [target.value]
+    for name in wanted:
+        if name == "claude":
+            dest = home / ".claude" / "skills" / "coop" / "SKILL.md"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(text, encoding="utf-8")
+        else:
+            dest = home / f".{name}" / ("AGENTS.md" if name == "codex" else "GEMINI.md")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            block = f"<!-- coop:start -->\n# coop\n\n{body}\n<!-- coop:end -->\n"
+            old = dest.read_text(encoding="utf-8") if dest.exists() else ""
+            dest.write_text(_BLOCK.sub("", old).rstrip() + ("\n\n" if old.strip() else "") + block, encoding="utf-8")
+        console.print(f"[green]Installed coop instructions for {name}:[/green] {dest}")
+    if not wanted:
+        console.print("[yellow]No claude/codex/gemini CLI found on PATH.[/yellow]")
 
 
 @app.command()

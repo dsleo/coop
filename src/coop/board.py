@@ -304,5 +304,18 @@ def claim_issue(repo: str, number: int, me: str) -> bool:
     return True
 
 
+def flag_issue(repo: str, number: int, size: str | None = None, budget: int | None = None) -> list[str]:
+    ensure_repo_labels(repo)
+    labels = [LABEL_HELP]
+    if size:
+        labels.append(f"size:{size}")
+    if budget:
+        label = f"budget:{budget // 1000}k" if budget % 1000 == 0 else f"budget:{budget}"
+        labels.append(label)
+        run_gh(["label", "create", label, "--repo", repo, "--color", "BFD4F2", "--force"], check=False)
+    run_gh(["issue", "edit", str(number), "--repo", repo, "--add-label", ",".join(labels)])
+    return labels
+
+
 def release_issue(repo: str, number: int) -> None:
     run_gh(["issue", "edit", str(number), "--repo", repo, "--remove-assignee", "@me", "--remove-label", LABEL_CLAIMED], check=False)
