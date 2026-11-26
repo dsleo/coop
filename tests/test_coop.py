@@ -257,3 +257,11 @@ def test_board_env_override_and_missing_board_error(monkeypatch, tmp_path):
         config.require_board_repo(config.load_config())
     monkeypatch.setenv("COOP_BOARD", "grp/coop-board")
     assert config.require_board_repo(config.load_config()) == "grp/coop-board"
+
+
+def test_invite_message_and_board_readme_contain_the_join_steps():
+    from coop.board import board_readme, invite_message
+
+    msg = invite_message("grp/coop-board", "alice")
+    assert "@alice" in msg and "npx skills add dsleo/coop" in msg and "coop init grp/coop-board" in msg
+    assert "## Join this board" in board_readme("grp/coop-board")

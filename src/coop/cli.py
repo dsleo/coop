@@ -19,6 +19,7 @@ from coop.auto import claim_and_run, run_auto_once
 from coop.board import (
     GhError,
     accept_invitation,
+    invite_message,
     sync_access,
     create_board,
     current_github_user,
@@ -212,6 +213,8 @@ def invite(
     board = load_config().board_repo
     hint = f"`coop init {target}`" if target == board else "`coop accept`"
     console.print(f"[green]Invited {user} to {target} with write access. They accept with {hint}.[/green]")
+    if target == board:
+        console.print(f"\n[bold]Send them this (GitHub's invitation email can't carry it):[/bold]\n\n{invite_message(target, user.lstrip('@'))}")
 
 
 @app.command()

@@ -93,6 +93,35 @@ def fetch_board_manifest(board_repo: str) -> tuple[dict[str, Any], str]:
     return tomllib.loads(decoded), payload["sha"]
 
 
+TOOL_REPO = "dsleo/coop"
+
+
+def join_steps(board_repo: str) -> str:
+    return (
+        f"1. Install the skill for your AI agent: `npx skills add {TOOL_REPO} -g -a claude-code -y`\n"
+        f"2. Ask your agent: \"set up coop (my board is `{board_repo}`) and tell me if there's an issue I can help with\"\n\n"
+        f"Or by hand: `uv tool install git+https://github.com/{TOOL_REPO}` then `coop init {board_repo}` (this also accepts your invitation)."
+    )
+
+
+def invite_message(board_repo: str, user: str) -> str:
+    return f"Hi @{user}! I invited you to our coop board ({board_repo}), where friends share GitHub issues to fix with spare AI tokens. To join:\n\n{join_steps(board_repo)}"
+
+
+def board_readme(board_repo: str) -> str:
+    return (
+        f"# {board_repo.split('/')[1]}\n\nA [coop](https://github.com/{TOOL_REPO}) board: the list of repos whose issues friends help fix with spare AI tokens. "
+        f"The list is in `repos.toml` (see it with `coop repos`).\n\n## Join this board\n\nYou need an invitation from the board owner (`coop invite <your-github-username>`). Then:\n\n{join_steps(board_repo)}\n"
+    )
+
+
+def write_board_readme(board_repo: str) -> None:
+    sha = run_gh(["api", f"repos/{board_repo}/contents/README.md", "--jq", ".sha"], check=False)
+    content = base64.b64encode(board_readme(board_repo).encode()).decode("ascii")
+    args = ["api", "-X", "PUT", f"repos/{board_repo}/contents/README.md", "-f", "message=coop: how to join", "-f", f"content={content}"]
+    run_gh(args + (["-f", f"sha={sha}"] if sha else []))
+
+
 def _put_manifest(board_repo: str, data: dict[str, Any], sha: str | None, message: str) -> None:
     content = base64.b64encode(tomli_w.dumps(data).encode()).decode("ascii")
     args = ["api", "-X", "PUT", f"repos/{board_repo}/contents/repos.toml", "-f", f"message={message}", "-f", f"content={content}"]
@@ -149,6 +178,7 @@ def _edit_manifest(board_repo: str, message: str, mutate: Callable[[dict[str, An
 def create_board(board_repo: str, public: bool = False) -> None:
     run_gh(["repo", "create", board_repo, "--public" if public else "--private", "--add-readme", "--description", "coop board: repos friends can help on"])
     _put_manifest(board_repo, {"repos": []}, None, "coop: init board")
+    write_board_readme(board_repo)
     _update_readme(board_repo, {"repos": []})
 
 
