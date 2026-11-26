@@ -1,0 +1,1 @@
+../../src/coop/SKILL.md

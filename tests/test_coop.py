@@ -167,3 +167,10 @@ def test_doctor_json_shape(monkeypatch):
     r = CliRunner().invoke(app, ["doctor", "--json"])
     out = json.loads(r.stdout)
     assert r.exit_code == 1 and out["ready"] is False and out["checks"][0]["fix"] == "do y"
+
+
+def test_skills_cli_layout_points_at_packaged_skill():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    assert (root / "skills/coop/SKILL.md").resolve() == (root / "src/coop/SKILL.md").resolve()
