@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -137,7 +138,12 @@ def _spinner_hook():
 
 
 @app.callback(invoke_without_command=True)
-def _default(ctx: typer.Context) -> None:
+def _default(
+    ctx: typer.Context,
+    board: str | None = typer.Option(None, "--board", help="Use this board for this command only (default: the one saved by `coop init`)"),
+) -> None:
+    if board:
+        os.environ["COOP_BOARD"] = board
     if ctx.invoked_subcommand is None:
         _auto(None, None, 1, False)
 
@@ -261,7 +267,9 @@ def register(
     budget: int = typer.Option(100_000, "--budget", "-b", help="Max tokens a helper may spend per issue"),
 ) -> None:
     """Add a repo to the board and create the coop labels on it."""
-    console.print(f"[green]{register_repo_on_board(require_board_repo(load_config()), repo or infer_current_repo(), budget)}[/green]")
+    board = require_board_repo(load_config())
+    console.print(f"Board: [bold]{board}[/bold]")
+    console.print(f"[green]{register_repo_on_board(board, repo or infer_current_repo(), budget)}[/green]")
 
 
 @app.command()
@@ -300,6 +308,7 @@ def flag(
     console.print(f"[green]Flagged {repo}#{issue_number}: {', '.join(labels)}[/green]")
     cfg = load_config()
     if cfg.board_repo and not no_invite:
+        console.print(f"Board: [bold]{cfg.board_repo}[/bold] (its members get write access)")
         _report_access(sync_access(cfg.board_repo, current_github_user(), only_repo=repo))
 
 

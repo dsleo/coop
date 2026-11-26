@@ -173,6 +173,8 @@ coop init dsleo/coop-board        # add -p codex / -t 150000 to change defaults
 coop init                         # or no name: uses the coop-board you were invited to (asks first)
 ```
 
+**Which board does coop use?** The one saved by `coop init` (one per machine; `coop doctor` shows it, and `register`/`flag` print it before acting). On a fresh machine nothing is saved, so coop refuses and asks you to run `coop init <board>`; your agent is told to ask you which board and to confirm it before any write. In several groups? Switch with `coop init <other-board>`, or use another board for one command only: `coop --board other-group/coop-board list`.
+
 A **public** board can be read by anyone without an invitation, but you need the invitation to add your repos to it and to be shared on the others.
 
 <details>

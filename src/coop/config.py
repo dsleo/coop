@@ -40,9 +40,13 @@ def detect_providers() -> list[ProviderName]:
 
 
 def load_config() -> CoopConfig:
-    if not CONFIG_FILE.exists():
-        return CoopConfig(available_providers=detect_providers())
-    return CoopConfig.model_validate(tomllib.loads(CONFIG_FILE.read_text(encoding="utf-8")))
+    if CONFIG_FILE.exists():
+        cfg = CoopConfig.model_validate(tomllib.loads(CONFIG_FILE.read_text(encoding="utf-8")))
+    else:
+        cfg = CoopConfig(available_providers=detect_providers())
+    if os.environ.get("COOP_BOARD"):  # one-off override: `coop --board owner/board ...` or COOP_BOARD=...
+        cfg.board_repo = os.environ["COOP_BOARD"]
+    return cfg
 
 
 def save_config(cfg: CoopConfig) -> None:
@@ -52,7 +56,7 @@ def save_config(cfg: CoopConfig) -> None:
 
 def require_board_repo(cfg: CoopConfig) -> str:
     if not cfg.board_repo:
-        raise RuntimeError("coop is not initialized yet. Run: coop init <owner>/coop-board")
+        raise RuntimeError("No board selected: coop does not know which coop-board to use. Run `coop init <owner>/coop-board` (once), or pass `--board <owner>/coop-board`.")
     return cfg.board_repo
 
 

@@ -246,3 +246,14 @@ def test_init_without_name_uses_the_single_coop_board_invitation(monkeypatch):
     assert r.exit_code == 0 and "dsleo/coop-board" in r.stdout
     monkeypatch.setattr(cli, "pending_invitations", lambda: [inv(1, "a/coop-board"), inv(2, "b/coop-board")])
     assert CliRunner().invoke(cli.app, ["init"]).exit_code == 1  # ambiguous: must name it
+
+
+def test_board_env_override_and_missing_board_error(monkeypatch, tmp_path):
+    from coop import config
+
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "none.toml")
+    monkeypatch.delenv("COOP_BOARD", raising=False)
+    with pytest.raises(RuntimeError, match="which coop-board"):
+        config.require_board_repo(config.load_config())
+    monkeypatch.setenv("COOP_BOARD", "grp/coop-board")
+    assert config.require_board_repo(config.load_config()) == "grp/coop-board"
