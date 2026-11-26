@@ -174,3 +174,31 @@ def test_skills_cli_layout_points_at_packaged_skill():
 
     root = Path(__file__).resolve().parent.parent
     assert (root / "skills/coop/SKILL.md").resolve() == (root / "src/coop/SKILL.md").resolve()
+
+
+def test_init_accepts_pending_invitation_for_the_named_board_only(monkeypatch):
+    from typer.testing import CliRunner
+
+    from coop import cli
+    from coop.board import GhError
+    from coop.config import CoopConfig
+
+    state = {"accepted": []}
+    monkeypatch.setattr(cli, "current_github_user", lambda: "me")
+    monkeypatch.setattr(cli, "load_config", lambda: CoopConfig())
+    monkeypatch.setattr(cli, "save_config", lambda c: None)
+    monkeypatch.setattr(cli, "detect_providers", lambda: ["claude"])
+
+    def read(board):
+        if not state["accepted"]:
+            raise GhError("404")
+        return []
+
+    monkeypatch.setattr(cli, "list_registered_repos", read)
+    monkeypatch.setattr(cli, "pending_invitations", lambda: [
+        {"id": 1, "repository": {"full_name": "x/other"}, "inviter": {"login": "x"}},
+        {"id": 2, "repository": {"full_name": "grp/coop-board"}, "inviter": {"login": "g"}},
+    ])
+    monkeypatch.setattr(cli, "accept_invitation", lambda i: state["accepted"].append(i))
+    r = CliRunner().invoke(cli.app, ["init", "grp/coop-board"])
+    assert r.exit_code == 0 and state["accepted"] == [2]  # the other repo's invitation is untouched

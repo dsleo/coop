@@ -37,7 +37,7 @@ Also needed: one logged-in AI CLI (`claude`, `codex` or `gemini`) and `gh auth l
 
 ## Workflow A: "Is there an issue I can help with?" (helper)
 
-1. `coop doctor --json` (fix anything missing, rule 2). If invitations are pending: `coop accept --list --json`, show them to the user, and accept only what they approve: `coop accept owner/repo`.
+1. `coop doctor --json` (fix anything missing, rule 2). `coop init <board>` already accepts a pending invitation to the board itself. For invitations to friends' repos: `coop accept --list --json`, show them to the user, and accept only what they approve: `coop accept owner/repo`.
 2. `coop list --json` → array of `{issue, repo, number, title, url, labels, assignees, author, budget, trust, own_repo}`. Unclaimed only (use `--all` to include claimed).
 3. Tell the user what is open: issue ref, title, size/budget labels, trust tier. Skip `own_repo: true` unless they want to test on their own repos.
 4. If they want one fixed: `coop run <issue> --json` (e.g. `coop run alice/app#12 --json`; add `-t 80000` to cap tokens, `-p codex` to pick a provider). To let coop choose: `coop auto --json` (`-n 2` for two issues, `-t 150000` total budget).

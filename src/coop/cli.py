@@ -167,7 +167,16 @@ def init(
     if create:
         create_board(board_repo, public)
         console.print(f"[green]Created {'public' if public else 'private'} board repo {board_repo}[/green]")
-    list_registered_repos(board_repo)  # verifies access, with a helpful error otherwise
+    try:
+        list_registered_repos(board_repo)  # verifies access
+    except GhError:
+        # a private board is unreadable until its invitation is accepted: you named this board, so accept it
+        inv = next((i for i in pending_invitations() if i["repository"]["full_name"].lower() == board_repo.lower()), None)
+        if not inv:
+            raise
+        accept_invitation(inv["id"])
+        console.print(f"[green]Accepted your invitation to {board_repo}[/green]")
+        list_registered_repos(board_repo)
     providers = detect_providers()
     cfg = load_config()
     cfg.board_repo, cfg.available_providers, cfg.default_max_tokens = board_repo, providers, max_tokens

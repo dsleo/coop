@@ -32,7 +32,7 @@ def run_checks() -> list[dict]:
             n = len(list_registered_repos(cfg.board_repo))
             checks.append(_c("board reachable", True, f"{cfg.board_repo}: {n} registered repos"))
         except GhError as e:
-            checks.append(_c("board reachable", False, str(e)[:200], "coop accept  (pending invitation?) or check the board name"))
+            checks.append(_c("board reachable", False, str(e)[:200], "re-run `coop init <board>` (it accepts a pending invitation to that board); otherwise check the board name or ask the owner to `coop invite` you"))
         try:
             n = len(pending_invitations())
             checks.append(_c("pending invitations", True, f"{n} pending (list: `coop accept --list`)", required=False))
