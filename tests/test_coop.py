@@ -169,11 +169,14 @@ def test_doctor_json_shape(monkeypatch):
     assert r.exit_code == 1 and out["ready"] is False and out["checks"][0]["fix"] == "do y"
 
 
-def test_skills_cli_layout_points_at_packaged_skill():
+def test_skills_cli_copy_matches_packaged_skill():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    assert (root / "skills/coop/SKILL.md").resolve() == (root / "src/coop/SKILL.md").resolve()
+    copy = root / "skills/coop/SKILL.md"
+    assert not copy.is_symlink()  # the skills CLI skips symlinks that point outside the skill folder
+    assert copy.read_text() == (root / "src/coop/SKILL.md").read_text(), "after editing src/coop/SKILL.md run: cp src/coop/SKILL.md skills/coop/SKILL.md"
+
 
 
 def test_init_accepts_pending_invitation_for_the_named_board_only(monkeypatch):
