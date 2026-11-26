@@ -265,3 +265,11 @@ def test_invite_message_and_board_readme_contain_the_join_steps():
     msg = invite_message("grp/coop-board", "alice")
     assert "@alice" in msg and "npx skills add dsleo/coop" in msg and "coop init grp/coop-board" in msg
     assert "## Join this board" in board_readme("grp/coop-board")
+
+
+def test_board_readme_has_repo_table_and_join_steps():
+    from coop.board import board_readme
+
+    md = board_readme("grp/coop-board", [{"repo": "alice/app", "default_budget": 50_000}])
+    assert "| [alice/app](https://github.com/alice/app) |" in md and "| 50k |" in md
+    assert "label%3Acoop-help" in md and "## Join this board" in md and "coop init grp/coop-board" in md
