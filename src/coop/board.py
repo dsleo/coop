@@ -285,10 +285,16 @@ def fetch_single_issue(repo: str, number: int, default_budget: int = 100_000) ->
 
 
 def claim_issue(repo: str, number: int, me: str) -> bool:
-    """Assign + label, then re-read: if someone else claimed concurrently, the alphabetically
-    first assignee wins and the loser backs off. Not a lock, but races resolve deterministically."""
+    """Refuse issues that are already claimed or assigned to someone else. Otherwise assign + label,
+    then re-read: if someone claimed at the very same moment, the alphabetically first assignee
+    wins and the loser backs off. GitHub has no assignment lock, so this is best effort: anyone
+    with write access (e.g. the repo owner) can still change assignees by hand."""
     if not has_push_access(repo):
         raise GhError(f"You need write access to {repo} to claim issues (ask the owner: `coop invite {me} {repo}`).")
+    current = fetch_single_issue(repo, number)
+    taken = LABEL_CLAIMED in current.labels or any(a.lower() != me.lower() for a in current.assignees)
+    if taken:
+        return False  # already someone's: never take it over
     ensure_repo_labels(repo, only=(LABEL_CLAIMED,))
     run_gh(["issue", "edit", str(number), "--repo", repo, "--add-assignee", "@me", "--add-label", LABEL_CLAIMED])
     assignees = sorted(a.lower() for a in fetch_single_issue(repo, number).assignees)

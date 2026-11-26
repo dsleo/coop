@@ -24,7 +24,7 @@ def claim_and_run(
 ) -> RunResult:
     """Claim, run, and release the claim again if the run failed or produced nothing."""
     if claim and not claim_issue(issue.repo, issue.number, me):
-        raise GhError(f"{issue.repo}#{issue.number} was claimed by someone else just now.")
+        raise GhError(f"{issue.repo}#{issue.number} is already claimed by someone else (see `coop list --all`).")
     try:
         res = execute_coop_run(issue, provider, cap, trust, cfg.max_turns, cfg.max_minutes, on_progress)
     except BaseException:

@@ -124,3 +124,17 @@ def test_sync_access_invites_only_missing_members_on_admin_repos_with_issues(mon
     assert sent == [("me/a", "bob"), ("me/a", "carol")]
     assert board.sync_access("grp/board", "me", only_repo="me/idle", dry_run=True) == [("me/idle", "bob"), ("me/idle", "carol")]
     assert len(sent) == 2  # dry run sent nothing
+
+
+def test_claim_refuses_issue_already_claimed_by_someone_else(monkeypatch):
+    from coop import board
+
+    monkeypatch.setattr(board, "has_push_access", lambda r: True)
+    monkeypatch.setattr(board, "fetch_single_issue", lambda r, n, b=0: issue(labels=["coop-claimed"]) if n == 1 else issue(labels=[]))
+    called = []
+    monkeypatch.setattr(board, "run_gh", lambda *a, **k: called.append(a) or "")
+    assert board.claim_issue("alice/app", 1, "zed") is False
+    assert not called  # nothing was edited on GitHub
+    taken = issue(); taken.assignees = ["alice"]
+    monkeypatch.setattr(board, "fetch_single_issue", lambda r, n, b=0: taken)
+    assert board.claim_issue("alice/app", 2, "zed") is False

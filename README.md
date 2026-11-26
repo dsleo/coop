@@ -55,9 +55,10 @@ Everyone in a group plays both roles, depending on the repo:
 2. [Setup: step by step](#setup-step-by-step) (create the board, join it, share your repos)
 3. [Daily use](#daily-use)
 4. [Labels](#labels)
-5. [Budgets](#budgets)
-6. [Command reference](#command-reference)
-7. [Security](#security)
+5. [Claims](#claims)
+6. [Budgets](#budgets)
+7. [Command reference](#command-reference)
+8. [Security](#security)
 
 ---
 
@@ -85,8 +86,6 @@ Everyone in the group does this once.
 ---
 
 ## Setup: step by step
-
-Throughout, a **GitHub handle** means a GitHub username such as `dsleo` (what appears in `github.com/<handle>`).
 
 The *board* is a small GitHub repo (e.g. `dsleo/coop-board`) containing one file, `repos.toml`, that lists which repos belong to the group. Everyone points `coop` at the same board.
 
@@ -137,14 +136,19 @@ coop flag 42 --size small
 
 Friends then see the issue in `coop list`. When one of them runs `coop`, the issue gets assigned to them and, after a few minutes, a **Draft PR titled `[coop] <issue title>`** appears on your repo. Its description says which provider and tier produced it, the token estimate, and whether the run finished (`Closes #42`) or stopped early (`Refs #42`). Review the diff like any PR, then mark it ready and merge, or close it. If the helper's run fails or changes nothing, the issue is released and goes back to the pool.
 
-Already have flagged issues (for example you added the label by hand)? Run:
+**Where do flagged issues go?** Nowhere: there is nothing to "send". The board only lists *which repos* are in the group; `coop list` and `coop` read the flagged issues live from each repo on GitHub. So an issue is visible to friends the moment it has the `coop-help` label (whether you used `coop flag` or the GitHub UI), give or take a few seconds of GitHub lag.
+
+What the invites are for is **write access**: a helper can only claim an issue and push a branch if they are a collaborator on the repo. `coop flag` takes care of that for you. You only need `coop sync-access` in two cases:
+
+- you flagged an issue **in the GitHub UI** instead of with `coop flag`, or
+- someone **joined the board after** you flagged the issue.
 
 ```bash
 coop sync-access --dry-run        # show who would be invited
 coop sync-access                  # invite every board member to all your registered repos that have open coop-help issues
 ```
 
-It only touches repos where you are admin, and only invites people not yet collaborators. You can also invite one person manually: `coop invite alice dsleo/my-project`.
+It only touches repos where you are admin, and only invites people who aren't collaborators yet. You can also invite one person manually: `coop invite alice dsleo/my-project`.
 
 ---
 
@@ -173,11 +177,21 @@ Prefer not to use the CLI to flag? Open the issue on GitHub, click *Labels*, add
 | Label | Who sets it | Meaning |
 | :-- | :-- | :-- |
 | `coop-help` | **You (required)** | The issue is open for friends to pick up. This is the only label that is needed. |
-| `coop-claimed` | coop | Someone is working on it. Added when claimed, removed again if their run fails or changes nothing. Don't add it yourself. |
+| `coop-claimed` | coop | Someone is working on it. Added when claimed, removed again if their run fails or changes nothing. Don't add it yourself. A claimed issue is never taken over by another helper (see [Claims](#claims)). |
 | `size:small` / `size:medium` / `size:large` | You (optional) | Hint for ranking: small issues are picked first, large last. Unlabelled counts as in between. |
 | `budget:25k`, `50k`, `100k`, `200k` (or `budget:<number>`) | You (optional) | Max tokens a helper may spend on **this** issue. Overrides the repo's default budget. |
 
 `coop flag 42 --size small --budget 50000` adds `coop-help`, `size:small` and `budget:50k` in one go.
+
+---
+
+## Claims
+
+Once a helper claims an issue (assigned to them + `coop-claimed`), `coop` will not let anyone else claim it: it is hidden from `coop list` and `coop`, and `coop run` on it refuses. Limits, since GitHub has no real lock on assignees:
+
+- Two helpers starting in the same second are resolved by a tie-break (alphabetically first login keeps it).
+- Anyone with write access, such as you as the owner, can still change assignees or labels by hand.
+- If a helper's machine dies mid-run, the claim stays. The owner frees the issue by removing the assignee and the `coop-claimed` label on GitHub.
 
 ---
 
@@ -239,7 +253,7 @@ Always, regardless of tier:
 Limits you should know about:
 - The OS sandbox (blocks reading `~/.ssh`, `~/.aws`, `~/.config/gh`…, blocks writing outside the clone/temp/CLI config dirs) is **macOS only**. On Linux only the tool restrictions apply; run coop in a container for more.
 - Token counts are **estimates** (cache reads aren't counted; Gemini reports only at the end). The reliable hard stops are `max_minutes` (default 20) and, for Claude, `max_turns` (default 25).
-- Claiming is a deterministic tie-break, not a lock; two friends starting in the same second resolve it by login order.
+- Claiming is best effort, not a lock: see [Claims](#claims).
 - Board members get **write access** to every repo you flag, via automatic invites. Only invite people to the board you trust with that.
 
 More detail in [docs/architecture.md](docs/architecture.md).
