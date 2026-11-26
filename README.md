@@ -37,11 +37,7 @@ You don't have to type coop commands yourself. Any agent that can run shell comm
 npx skills add dsleo/coop -g -a claude-code -y
 ```
 
-That installs it for Claude Code with no prompts. Add more agents with extra `-a` flags (for example `-a codex -a gemini-cli`), or drop `-a ... -y` to pick agents interactively (Claude Code is under "Additional agents" in that list: tick it with space before pressing Enter).
-
-This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI, which finds the guide at `skills/coop/SKILL.md` in this repo and installs it for the agents you name (`-g` = for all your projects). Then just ask your agent: *"set up coop (my board is `dsleo/coop-board`) and tell me if there's an issue I can help with"*. The skill tells it how to install the `coop` CLI itself, so you don't need to install anything else first. It asks before installing, and the one step it can't do for you is `gh auth login` (interactive: you run it in your own terminal).
-
-No Node? Install coop by hand (see [Installation](#installation)), then use `coop install-skill` below.
+Then just ask your agent: *"set up coop (my board is `dsleo/coop-board`) and tell me if there's an issue I can help with"*. The skill tells it how to install the `coop` CLI itself, so you don't need to install anything else first. It asks before installing, and the one step it can't do for you is `gh auth login` (interactive: you run it in your own terminal).
 
 **Already have coop installed: teach your agents once**
 
@@ -49,8 +45,6 @@ No Node? Install coop by hand (see [Installation](#installation)), then use `coo
 coop install-skill               # every agent CLI found: Claude Code, Codex, Gemini
 coop install-skill -t claude     # or just one: claude | codex | gemini
 ```
-
-It writes `~/.claude/skills/coop/SKILL.md`, and/or a marked block in `~/.codex/AGENTS.md` or `~/.gemini/GEMINI.md`. Re-run it any time to update.
 
 After that, in any session, just ask:
 
@@ -172,8 +166,6 @@ First ask whoever runs the board to invite you (`coop invite <your-github-userna
 coop init dsleo/coop-board        # add -p codex / -t 150000 to change defaults
 coop init                         # or no name: uses the coop-board you were invited to (asks first)
 ```
-
-**Which board does coop use?** The one saved by `coop init` (one per machine; `coop doctor` shows it, and `register`/`flag` print it before acting). On a fresh machine nothing is saved, so coop refuses and asks you to run `coop init <board>`; your agent is told to ask you which board and to confirm it before any write. In several groups? Switch with `coop init <other-board>`, or use another board for one command only: `coop --board other-group/coop-board list`.
 
 A **public** board can be read by anyone without an invitation, but you need the invitation to add your repos to it and to be shared on the others.
 
