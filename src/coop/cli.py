@@ -209,7 +209,9 @@ def invite(
     """Give a friend write access (needed to claim issues and push branches)."""
     target = repo or require_board_repo(load_config())
     invite_collaborator(target, user.lstrip("@"))
-    console.print(f"[green]Invited {user} to {target} with write access. They run `coop accept`.[/green]")
+    board = load_config().board_repo
+    hint = f"`coop init {target}`" if target == board else "`coop accept`"
+    console.print(f"[green]Invited {user} to {target} with write access. They accept with {hint}.[/green]")
 
 
 @app.command()
