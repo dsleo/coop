@@ -227,3 +227,22 @@ def test_accept_yes_only_takes_board_repos_unless_all(monkeypatch):
     got.clear()
     CliRunner().invoke(cli.app, ["accept"], input="\n\n")  # defaults: yes for board repo, no for stranger
     assert got == [1]
+
+
+def test_init_without_name_uses_the_single_coop_board_invitation(monkeypatch):
+    from typer.testing import CliRunner
+
+    from coop import cli
+    from coop.config import CoopConfig
+
+    inv = lambda i, r: {"id": i, "repository": {"full_name": r}, "inviter": {"login": "dsleo"}}
+    monkeypatch.setattr(cli, "current_github_user", lambda: "me")
+    monkeypatch.setattr(cli, "load_config", lambda: CoopConfig())
+    monkeypatch.setattr(cli, "save_config", lambda c: None)
+    monkeypatch.setattr(cli, "detect_providers", lambda: ["claude"])
+    monkeypatch.setattr(cli, "list_registered_repos", lambda b: [])
+    monkeypatch.setattr(cli, "pending_invitations", lambda: [inv(1, "dsleo/coop-board"), inv(2, "x/other")])
+    r = CliRunner().invoke(cli.app, ["init"], input="y\n")
+    assert r.exit_code == 0 and "dsleo/coop-board" in r.stdout
+    monkeypatch.setattr(cli, "pending_invitations", lambda: [inv(1, "a/coop-board"), inv(2, "b/coop-board")])
+    assert CliRunner().invoke(cli.app, ["init"]).exit_code == 1  # ambiguous: must name it

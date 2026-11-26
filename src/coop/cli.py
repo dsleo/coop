@@ -156,7 +156,7 @@ def auto(
 
 @app.command()
 def init(
-    board_repo: str = typer.Argument(..., help="Shared board repo, e.g. my-group/coop-board"),
+    board_repo: str | None = typer.Argument(None, help="Shared board repo, e.g. my-group/coop-board (omit it to use the board you were invited to)"),
     create: bool = typer.Option(False, "--create", help="Create the board repo first. Only one person does this."),
     public: bool = typer.Option(False, "--public", help="With --create: make the board public (default private)."),
     provider: Provider = typer.Option(Provider.claude, "--provider", "-p"),
@@ -164,6 +164,15 @@ def init(
 ) -> None:
     """Configure coop with the group's board repo (and optionally create it)."""
     me = current_github_user()  # fails early if `gh` is not logged in
+    if board_repo is None:
+        if create:
+            raise ValueError("--create needs a board name, e.g. `coop init my-group/coop-board --create`")
+        found = [i for i in pending_invitations() if i["repository"]["full_name"].lower().endswith("/coop-board")]
+        if len(found) != 1:
+            raise ValueError("Pass the board name: `coop init <owner>/coop-board`" + (f" (invitations to choose from: {', '.join(i['repository']['full_name'] for i in found)})" if found else " (no pending coop-board invitation found; ask whoever runs the board to `coop invite` you)"))
+        board_repo = found[0]["repository"]["full_name"]
+        if not typer.confirm(f"Join the board {board_repo} (invited by {found[0]['inviter']['login']})?", default=True):
+            raise typer.Abort()
     if create:
         create_board(board_repo, public)
         console.print(f"[green]Created {'public' if public else 'private'} board repo {board_repo}[/green]")

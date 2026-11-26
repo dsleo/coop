@@ -23,7 +23,7 @@ coop doctor --json     # if "command not found", see Install below
 It returns `{"ready": bool, "checks": [{"name","ok","detail","fix","required"}]}`. For each failed required check, run its `fix` (after asking, per rule 2), then re-run `coop doctor --json` until `ready` is true. Two things you cannot do for the user:
 
 - `gh auth login` is interactive: tell the user to run it in their own terminal, then continue.
-- The board name (e.g. `dsleo/coop-board`) comes from the user; ask for it, then `coop init <board>`.
+- The board name (e.g. `dsleo/coop-board`) comes from the user: ask for it, then `coop init <board>`. If they don't know it, `coop accept --list --json` shows pending invitations; one named `<owner>/coop-board` is probably it. Confirm the owner with the user before joining. (`coop init` with no name asks interactively, so as an agent always pass the name yourself.)
 
 ### Install (if `coop` is not found)
 

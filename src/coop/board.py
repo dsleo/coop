@@ -168,6 +168,8 @@ def register_repo_on_board(board_repo: str, target_repo: str, default_budget: in
     # Only repos you can write to may be registered: coop contributors need the same access.
     if not has_push_access(target_repo):
         raise GhError(f"You need write access to {target_repo} to register it.")
+    if not has_push_access(board_repo):
+        raise GhError(f"You can read {board_repo} but not edit it. Ask the board owner to run: coop invite {current_github_user()}")
     ensure_repo_labels(target_repo)
 
     def mutate(data: dict[str, Any]) -> bool:

@@ -166,9 +166,14 @@ Tell them the board name: `dsleo/coop-board`.
 
 ### Step 2: everyone else joins (once)
 
+First ask whoever runs the board to invite you (`coop invite <your-github-username>`). Then:
+
 ```bash
 coop init dsleo/coop-board        # add -p codex / -t 150000 to change defaults
+coop init                         # or no name: uses the coop-board you were invited to (asks first)
 ```
+
+A **public** board can be read by anyone without an invitation, but you need the invitation to add your repos to it and to be shared on the others.
 
 <details>
 <summary>What this does</summary>
