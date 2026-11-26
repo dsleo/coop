@@ -3,36 +3,179 @@
 Spend spare weekly AI subscription tokens (`claude`, `codex`, `gemini`) helping friends with their GitHub issues.
 
 - **No shared credentials.** Everyone runs their own CLI login on their own machine.
-- **No servers.** A private GitHub repo (`coop-board`) is the whole backend.
-- **One command.** `coop` picks an open issue from a friend's repo, works on it within your budget, and opens a **Draft PR**.
+- **No servers.** One small GitHub repo (the *board*) is the whole backend.
+- **One command.** `coop` picks an open issue from a friend's repo, works on it within your token budget, and opens a **Draft PR**.
 - **Safe by default.** Unknown repos run in the `safe` tier, in a throwaway clone, inside an OS sandbox on macOS. See [Security](#security).
-
-## How it works
 
 ```
  you flag an issue ──► label "coop-help" on your repo
- friend runs `coop` ──► finds it via the board ──► claims it ──► agent works in a temp clone
-                                                              ──► Draft PR on your repo
+ a friend runs `coop` ──► finds it via the board ──► claims it ──► agent works in a temp clone
+                                                                ──► Draft PR on your repo
 ```
 
-## Commands
+## Contents
+
+1. [Installation](#installation)
+2. [Setup: step by step](#setup-step-by-step) (create the board, join it, share your repos)
+3. [Daily use](#daily-use)
+4. [Labels](#labels)
+5. [Budgets](#budgets)
+6. [Command reference](#command-reference)
+7. [Security](#security)
+
+---
+
+## Installation
+
+Everyone in the group does this once.
+
+1. **Python 3.11+ and [uv](https://docs.astral.sh/uv/)**
+   ```bash
+   brew install uv
+   ```
+2. **GitHub CLI**, logged in, with git credentials set up (needed to push branches):
+   ```bash
+   brew install gh
+   gh auth login
+   gh auth setup-git
+   ```
+3. **At least one AI CLI** logged into your subscription: `claude`, `codex` or `gemini`.
+4. **coop itself:**
+   ```bash
+   uv tool install git+https://github.com/dsleo/coop
+   ```
+   Update later with `uv tool upgrade coop`. From a local checkout: `uv tool install .`
+
+---
+
+## Setup: step by step
+
+Throughout, a **GitHub handle** means a GitHub username such as `dsleo` (what appears in `github.com/<handle>`).
+
+The *board* is a small GitHub repo (e.g. `dsleo/coop-board`) containing one file, `repos.toml`, that lists which repos belong to the group. Everyone points `coop` at the same board.
+
+### Step 1: one person creates the board (once)
+
+```bash
+coop init dsleo/coop-board --create --public
+```
+
+This single command: **creates a new GitHub repository** `dsleo/coop-board` on your account, writes an empty `repos.toml` into it, and saves it as your coop board in `~/.config/coop/config.toml`. Use `--create` without `--public` for a private board. Public or private, only people you invite can edit it. Skip `--create` if the repo already exists.
+
+Then invite the friends by their GitHub handle (this gives them write access to the board repo, and *membership of the board* is what later lets `coop` share your repos with them automatically):
+
+```bash
+coop invite alice
+coop invite bob
+```
+
+Tell them the board name: `dsleo/coop-board`.
+
+### Step 2: everyone else joins (once)
+
+```bash
+coop accept                       # accept the board invitation
+coop init dsleo/coop-board        # add -p codex / -t 150000 to change defaults
+```
+
+### Step 3: share a repo you want help on
+
+Do this from inside the repo, or pass `owner/repo`:
+
+```bash
+cd my-project
+coop register --budget 100000
+```
+
+`register` adds the repo to the board and creates the coop [labels](#labels) on it. `--budget` is the **default max tokens a helper may spend per issue** in this repo (override per issue: see [Budgets](#budgets)). It is not a global limit.
+
+### Step 4: flag an issue and give friends access
+
+```bash
+coop flag 42 --size small
+```
+
+`42` is the **issue number on GitHub** (the `42` in `github.com/dsleo/my-project/issues/42`). It applies to the repo you are currently inside; from anywhere else add `--repo dsleo/my-project`. The issue must already exist.
+
+**Access is automatic:** when you flag an issue, `coop` invites every member of the board to that repo with write access (they need it to claim issues and push branches). Opt out with `--no-invite`. Friends run `coop accept` to take the invitation.
+
+Already have flagged issues (for example you added the label by hand)? Run:
+
+```bash
+coop sync-access --dry-run        # show who would be invited
+coop sync-access                  # invite every board member to all your registered repos that have open coop-help issues
+```
+
+It only touches repos where you are admin, and only invites people not yet collaborators. You can also invite one person manually: `coop invite alice dsleo/my-project`.
+
+---
+
+## Daily use
+
+```bash
+coop list                           # what's open across the group?
+coop                                # pick the best issue, solve it, open a Draft PR
+coop auto -p codex -t 150000 -n 2   # up to 2 issues, 150k tokens total, using Codex
+coop run dsleo/my-project#42        # work on one specific issue
+coop stats                          # what you've donated
+```
+
+Optional, once you know a friend well: `coop trust alice -l verified` (see [Security](#security)).
+
+`coop` skips your own repos unless you pass `--include-own` (handy for testing).
+
+---
+
+## Labels
+
+`coop register` creates all of these on the repo, so they also show up in the GitHub UI label picker. To open an issue for help **without the CLI**, open the issue on GitHub, click *Labels* and add `coop-help`.
+
+| Label | Who sets it | Meaning |
+| :-- | :-- | :-- |
+| `coop-help` | **You (required)** | The issue is open for friends to pick up. This is the only label that is needed. |
+| `coop-claimed` | coop | Someone is working on it. Added when claimed, removed again if their run fails or changes nothing. Don't add it yourself. |
+| `size:small` / `size:medium` / `size:large` | You (optional) | Hint for ranking: small issues are picked first, large last. Unlabelled counts as in between. |
+| `budget:25k`, `50k`, `100k`, `200k` (or `budget:<number>`) | You (optional) | Max tokens a helper may spend on **this** issue. Overrides the repo's default budget. |
+
+`coop flag 42 --size small --budget 50000` adds `coop-help`, `size:small` and `budget:50k` in one go.
+
+---
+
+## Budgets
+
+There are three levels. The smallest one that applies wins for the cap on a single issue:
+
+| Level | Set with | Meaning |
+| :-- | :-- | :-- |
+| **Issue** | label `budget:50k`, or `coop flag 42 --budget 50000` | Max for this one issue. |
+| **Repo** | `coop register --budget 100000` | Default max per issue in this repo. |
+| **Helper session** | `coop auto -t 150000` (default from `coop init -t`) | The helper's own total spare budget. Each issue's cap is `min(session budget left, issue/repo budget)`. |
+
+Token counts are **estimates** (see [Security](#security) for the hard stops: time and turns).
+
+---
+
+## Command reference
 
 | Command | What it does |
 | :-- | :-- |
-| `coop` / `coop auto [-p codex] [-t 150000] [-n 2]` | Pick, claim, solve, open Draft PR (`-n` = max issues, `-t` = total token budget) |
+| `coop` / `coop auto [-p provider] [-t tokens] [-n count] [--include-own]` | Pick, claim, solve, open a Draft PR |
 | `coop list [--all]` | Open `coop-help` issues across the board |
 | `coop run <url \| owner/repo#N>` | Work on one specific issue |
-| `coop flag <issue#> [--size small]` | Mark an issue in the current repo as open for help |
-| `coop register [owner/repo] [-b 100000]` | Add a repo to the board (needs write access to it) |
-| `coop unregister [owner/repo]` | Remove it |
+| `coop flag <N> [-r owner/repo] [-s size] [-b tokens] [--no-invite]` | Open issue N for help; invites board members to the repo |
+| `coop sync-access [owner/repo] [--dry-run]` | Invite every board member to your repos that have open coop-help issues |
+| `coop register [owner/repo] [-b tokens]` / `coop unregister [owner/repo]` | Add / remove a repo on the board |
 | `coop repos` | Registered repos + your local trust tier |
-| `coop trust <user \| owner/repo> -l verified` | Raise your local trust for a friend or repo |
-| `coop invite <user> [owner/repo]` | Give a friend write access (default: the board repo) |
+| `coop trust <handle \| owner/repo> -l verified` | Raise your local trust for a friend or repo |
+| `coop invite <handle> [owner/repo]` | Give someone write access (default: the board repo) |
 | `coop accept` | Review and accept pending repo invitations |
+| `coop init <board> [--create] [--public]` | Set up coop (and optionally create the board repo) |
 | `coop stats` | Local token usage (estimates) and PRs by provider |
 | `coop mcp` | Optional MCP server for desktop apps |
 
-Config lives in `~/.config/coop/` (`config.toml`: board, default provider and budget, `max_turns`, `max_minutes`; `trust.toml`: your trust tiers).
+Config lives in `~/.config/coop/`: `config.toml` (board, default provider and budget, `max_turns`, `max_minutes`) and `trust.toml` (your trust tiers).
+
+---
 
 ## Security
 
@@ -48,93 +191,23 @@ Always, regardless of tier:
 - Work happens in a fresh temp clone that is deleted afterwards.
 - The issue text is wrapped as untrusted input in the prompt (this reduces, but does not eliminate, prompt-injection risk).
 - Elevated tiers only apply to issues written by the repo owner or someone you trust. A stranger's issue in a trusted friend's repo still runs as `safe`.
-- Before pushing, coop unstages symlinks, `.env*`/key/credential files and files >1 MB, and refuses to push at all if added lines look like a private key or API key.
+- Before pushing, coop unstages symlinks, `.env*`/key/credential files and files over 1 MB, and refuses to push at all if added lines look like a private key or API key.
 - Everything lands as a **Draft PR**. Read the diff before merging.
 
 Limits you should know about:
-- The OS sandbox (blocks reading `~/.ssh`, `~/.aws`, `~/.config/gh`…, blocks writing outside the clone/temp/CLI config dirs) is **macOS only**. On Linux, only the tool restrictions apply; run coop in a container if you want more.
+- The OS sandbox (blocks reading `~/.ssh`, `~/.aws`, `~/.config/gh`…, blocks writing outside the clone/temp/CLI config dirs) is **macOS only**. On Linux only the tool restrictions apply; run coop in a container for more.
 - Token counts are **estimates** (cache reads aren't counted; Gemini reports only at the end). The reliable hard stops are `max_minutes` (default 20) and, for Claude, `max_turns` (default 25).
 - Claiming is a deterministic tie-break, not a lock; two friends starting in the same second resolve it by login order.
-- Everyone on the board is a writer on `coop-board`, and can register any repo they have write access to. Only invite people you trust.
+- Board members get **write access** to every repo you flag, via automatic invites. Only invite people to the board you trust with that.
 
 More detail in [docs/architecture.md](docs/architecture.md).
 
 ---
 
-# Getting started, step by step
-
-The group needs: **one** person creates the board (Part A); **everyone** does Part B; each person who wants help on a repo does Part C; Part D is daily use.
-
-## Part A: one person creates the board (once)
-
-1. Install the prerequisites (see Part B, steps 1 to 3).
-2. Create the private board repo and configure yourself against it. Replace `my-group` with your GitHub user or org:
-   ```bash
-   coop init my-group/coop-board --create            # private (default)
-   coop init my-group/coop-board --create --public   # public: anyone can read the repo list
-   ```
-   Public or private, only people you `coop invite` can edit the board or claim issues.
-3. Invite each friend (write access to the board):
-   ```bash
-   coop invite alice
-   coop invite bob
-   ```
-4. Tell your friends the board name (`my-group/coop-board`).
-
-## Part B: everyone, once
-
-1. **Python 3.11+** and **[uv](https://docs.astral.sh/uv/)** (`brew install uv`).
-2. **GitHub CLI**, logged in, with git credentials set up (needed to push branches):
-   ```bash
-   brew install gh
-   gh auth login
-   gh auth setup-git
-   ```
-3. **At least one AI CLI** logged into your subscription: `claude`, `codex` or `gemini`.
-4. **Install coop** from wherever you pushed this repo:
-   ```bash
-   uv tool install git+https://github.com/<you>/coop
-   ```
-   (or from a local checkout: `uv tool install .`)
-5. **Join the board** (everyone except the creator):
-   ```bash
-   coop accept                      # accept the board invitation
-   coop init my-group/coop-board    # add -p codex / -t 150000 to change defaults
-   ```
-
-## Part C: get help on your repos (per repo)
-
-1. Let your friends write to the repo (needed to claim issues and push branches):
-   ```bash
-   coop invite alice my-name/my-project
-   coop invite bob my-name/my-project
-   ```
-   Friends then run `coop accept`.
-2. Register the repo, with the max tokens a helper may spend per issue:
-   ```bash
-   cd my-project
-   coop register --budget 100000
-   ```
-3. Flag an issue you want help with (it must already exist on GitHub):
-   ```bash
-   coop flag 42 --size small
-   ```
-
-## Part D: spend your spare tokens
-
-```bash
-coop list                         # what's open?
-coop                              # pick the best one, solve it, open a Draft PR
-coop auto -p codex -t 150000 -n 2 # up to 2 issues, 150k tokens total, using Codex
-coop stats                        # what you've donated
-```
-
-Optional, once you know a friend well: `coop trust alice -l verified`.
-
 ## Troubleshooting
 
-- `Cannot read repos.toml in …`: you haven't accepted the invitation (`coop accept`) or the board name is wrong.
-- `You need write access to …`: the repo owner must run `coop invite <you> <repo>`.
-- `No OS sandbox on this platform`: you're not on macOS; see Limits above.
-- Nothing happens / queue clear: nobody has flagged an unclaimed issue in a repo you aren't the owner of (`--include-own` to test on your own repos).
+- `Cannot read repos.toml in …`: you haven't accepted the invitation (`coop accept`) or the board name is wrong. Right after `register` the list can lag a few seconds behind GitHub.
+- `You need write access to …`: the repo owner must run `coop invite <you> <repo>` (or `coop sync-access`).
+- `No OS sandbox on this platform`: you're not on macOS; see Security.
+- Queue clear although issues exist: your own repos are skipped (`--include-own`), claimed issues are hidden (`coop list --all`).
 - Develop: `uv venv && uv pip install -e ".[dev]" && .venv/bin/pytest`.

@@ -101,3 +101,26 @@ def test_sandbox_blocks_home_write_and_secret_read(tmp_path):
     assert subprocess.run(ok, capture_output=True).returncode == 0
     if (Path.home() / ".ssh").is_dir():
         assert subprocess.run(sandbox.wrap(["ls", str(Path.home() / ".ssh")], tmp_path), capture_output=True).returncode != 0
+
+
+def test_issue_budget_label_overrides_default():
+    from coop.board import issue_budget
+
+    assert issue_budget(["coop-help", "budget:50k"], 100_000) == 50_000
+    assert issue_budget(["budget:12345"], 100_000) == 12_345
+    assert issue_budget(["coop-help"], 100_000) == 100_000
+
+
+def test_sync_access_invites_only_missing_members_on_admin_repos_with_issues(monkeypatch):
+    from coop import board
+
+    monkeypatch.setattr(board, "list_registered_repos", lambda b: [board.BoardRepoEntry("me/a"), board.BoardRepoEntry("me/idle"), board.BoardRepoEntry("bob/x")])
+    monkeypatch.setattr(board, "has_admin_access", lambda r: r.startswith("me/"))
+    monkeypatch.setattr(board, "has_open_coop_issues", lambda r: r != "me/idle")
+    monkeypatch.setattr(board, "repo_collaborators", lambda r: ["me", "alice", "bob", "carol"] if r == "grp/board" else ["me", "alice"])
+    sent = []
+    monkeypatch.setattr(board, "invite_collaborator", lambda r, u, p="push": sent.append((r, u)))
+    assert board.sync_access("grp/board", "me") == [("me/a", "bob"), ("me/a", "carol")]
+    assert sent == [("me/a", "bob"), ("me/a", "carol")]
+    assert board.sync_access("grp/board", "me", only_repo="me/idle", dry_run=True) == [("me/idle", "bob"), ("me/idle", "carol")]
+    assert len(sent) == 2  # dry run sent nothing

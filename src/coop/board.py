@@ -16,6 +16,23 @@ from coop.config import TrustLevel
 SIZE_WEIGHTS = {"size:small": 30, "size:medium": 20, "size:large": 5}
 ISSUE_URL_RE = re.compile(r"github\.com/([^/]+/[^/]+)/issues/(\d+)")
 LABEL_HELP, LABEL_CLAIMED = "coop-help", "coop-claimed"
+BUDGET_RE = re.compile(r"^budget:(\d+)(k?)$", re.I)  # per-issue override, e.g. budget:50k or budget:50000
+LABELS = [
+    (LABEL_HELP, "0E8A16", "Open for coop AI token help"),
+    (LABEL_CLAIMED, "FBCA04", "Claimed by a coop contributor (set by coop)"),
+    ("size:small", "C5DEF5", "coop: quick fix, picked first"),
+    ("size:medium", "C5DEF5", "coop: medium task"),
+    ("size:large", "C5DEF5", "coop: big task, picked last"),
+    *((f"budget:{b}k", "BFD4F2", f"coop: spend at most {b}k tokens on this issue") for b in (25, 50, 100, 200)),
+]
+
+
+def issue_budget(labels: list[str], default: int) -> int:
+    """A `budget:<N>[k]` label on the issue overrides the repo's default budget."""
+    for lbl in labels:
+        if m := BUDGET_RE.match(lbl):
+            return int(m.group(1)) * (1000 if m.group(2) else 1)
+    return default
 
 
 class GhError(RuntimeError):
@@ -110,11 +127,10 @@ def list_registered_repos(board_repo: str) -> list[BoardRepoEntry]:
     return [BoardRepoEntry(r["repo"], int(r.get("default_budget", 100_000))) for r in data.get("repos", [])]
 
 
-def ensure_repo_labels(repo: str) -> None:
-    for name, color, desc in (
-        (LABEL_HELP, "0E8A16", "Open for coop AI token help"),
-        (LABEL_CLAIMED, "FBCA04", "Claimed by a coop contributor"),
-    ):
+def ensure_repo_labels(repo: str, only: tuple[str, ...] | None = None) -> None:
+    for name, color, desc in LABELS:
+        if only and name not in only:
+            continue
         run_gh(["label", "create", name, "--repo", repo, "--color", color, "--description", desc, "--force"], check=False)
 
 
@@ -152,6 +168,40 @@ def invite_collaborator(repo: str, user: str, permission: str = "push") -> None:
     run_gh(["api", "-X", "PUT", f"repos/{repo}/collaborators/{user}", "-f", f"permission={permission}"])
 
 
+def has_admin_access(repo: str) -> bool:
+    return run_gh(["api", f"repos/{repo}", "--jq", ".permissions.admin"], check=False) == "true"
+
+
+def repo_collaborators(repo: str) -> list[str]:
+    return run_gh(["api", f"repos/{repo}/collaborators", "--paginate", "--jq", ".[].login"]).split()
+
+
+def has_open_coop_issues(repo: str) -> bool:
+    raw = run_gh(["api", f"repos/{repo}/issues", "-X", "GET", "-f", f"labels={LABEL_HELP}", "-f", "state=open", "-f", "per_page=100"], check=False)
+    return any("pull_request" not in i for i in json.loads(raw or "[]"))
+
+
+def sync_access(board_repo: str, me: str, only_repo: str | None = None, dry_run: bool = False) -> list[tuple[str, str]]:
+    """Invite every member of the board (its collaborators) to repos that have coop-help issues.
+
+    Only repos where you are admin are touched. With `only_repo` that repo is synced even if it
+    has no open coop-help issue yet. Returns the (repo, user) invitations sent (or that would be).
+    """
+    members = [m for m in repo_collaborators(board_repo) if m.lower() != me.lower()]
+    repos = [only_repo] if only_repo else [e.repo for e in list_registered_repos(board_repo)]
+    sent: list[tuple[str, str]] = []
+    for repo in repos:
+        if not has_admin_access(repo) or (not only_repo and not has_open_coop_issues(repo)):
+            continue
+        existing = {c.lower() for c in repo_collaborators(repo)}
+        for m in members:
+            if m.lower() not in existing:
+                if not dry_run:
+                    invite_collaborator(repo, m)
+                sent.append((repo, m))
+    return sent
+
+
 def pending_invitations() -> list[dict[str, Any]]:
     return json.loads(run_gh(["api", "user/repository_invitations"]) or "[]")
 
@@ -164,16 +214,17 @@ def accept_invitation(invitation_id: int) -> None:
 
 
 def _to_issue(repo: str, item: dict[str, Any], budget: int) -> CoopIssue:
+    labels = [lbl["name"] for lbl in item.get("labels", [])]
     return CoopIssue(
         repo=repo,
         number=item["number"],
         title=item["title"],
         url=item["html_url"],
         body=item.get("body") or "",
-        labels=[lbl["name"] for lbl in item.get("labels", [])],
+        labels=labels,
         assignees=[a["login"] for a in item.get("assignees", [])],
         author=item["user"]["login"],
-        default_budget=budget,
+        default_budget=issue_budget(labels, budget),
     )
 
 
@@ -238,7 +289,7 @@ def claim_issue(repo: str, number: int, me: str) -> bool:
     first assignee wins and the loser backs off. Not a lock, but races resolve deterministically."""
     if not has_push_access(repo):
         raise GhError(f"You need write access to {repo} to claim issues (ask the owner: `coop invite {me} {repo}`).")
-    ensure_repo_labels(repo)
+    ensure_repo_labels(repo, only=(LABEL_CLAIMED,))
     run_gh(["issue", "edit", str(number), "--repo", repo, "--add-assignee", "@me", "--add-label", LABEL_CLAIMED])
     assignees = sorted(a.lower() for a in fetch_single_issue(repo, number).assignees)
     if assignees and assignees[0] != me.lower():

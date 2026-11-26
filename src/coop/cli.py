@@ -15,6 +15,7 @@ from coop.auto import claim_and_run, run_auto_once
 from coop.board import (
     GhError,
     accept_invitation,
+    sync_access,
     create_board,
     current_github_user,
     ensure_repo_labels,
@@ -205,17 +206,44 @@ def repos() -> None:
 
 @app.command()
 def flag(
-    issue_number: int = typer.Argument(...),
-    size: str | None = typer.Option(None, "--size", "-s", help="small | medium | large"),
+    issue_number: int = typer.Argument(..., help="The issue's number on GitHub (the N in .../issues/N)"),
+    repo: str | None = typer.Option(None, "--repo", "-r", help="owner/repo (default: the git repo you are in)"),
+    size: str | None = typer.Option(None, "--size", "-s", help="small | medium | large: small issues are picked first"),
+    budget: int | None = typer.Option(None, "--budget", "-b", help="Max tokens a helper may spend on THIS issue (overrides the repo default)"),
+    no_invite: bool = typer.Option(False, "--no-invite", help="Do not give board members write access to this repo"),
 ) -> None:
-    """Mark an issue in the current repo as open for coop help."""
-    repo = infer_current_repo()
+    """Open an issue for coop help (adds the coop-help label, plus optional size/budget labels)."""
+    repo = repo or infer_current_repo()
     ensure_repo_labels(repo)
-    labels = ["coop-help"] + ([f"size:{size}"] if size else [])
+    labels = ["coop-help"]
     if size:
-        run_gh(["label", "create", f"size:{size}", "--repo", repo, "--force"], check=False)
+        labels.append(f"size:{size}")
+    if budget:
+        blabel = f"budget:{budget // 1000}k" if budget % 1000 == 0 else f"budget:{budget}"
+        labels.append(blabel)
+        run_gh(["label", "create", blabel, "--repo", repo, "--color", "BFD4F2", "--force"], check=False)
     run_gh(["issue", "edit", str(issue_number), "--repo", repo, "--add-label", ",".join(labels)])
     console.print(f"[green]Flagged {repo}#{issue_number}: {', '.join(labels)}[/green]")
+    cfg = load_config()
+    if cfg.board_repo and not no_invite:
+        _report_access(sync_access(cfg.board_repo, current_github_user(), only_repo=repo))
+
+
+def _report_access(sent: list[tuple[str, str]], dry_run: bool = False) -> None:
+    verb = "Would invite" if dry_run else "Invited"
+    for r, u in sent:
+        console.print(f"[green]{verb} {u} to {r} (write access)[/green]")
+    if not sent:
+        console.print("[dim]Access: nothing to do (members already have access, or you are not admin there).[/dim]")
+
+
+@app.command("sync-access")
+def sync_access_cmd(
+    repo: str | None = typer.Argument(None, help="Only this repo (default: every registered repo you admin that has open coop-help issues)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show who would be invited without inviting"),
+) -> None:
+    """Invite every board member to your repos that have coop-help issues."""
+    _report_access(sync_access(require_board_repo(load_config()), current_github_user(), repo, dry_run), dry_run)
 
 
 @app.command("list")
