@@ -174,7 +174,7 @@ coop init dsleo/coop-board        # add -p codex / -t 150000 to change defaults
 ```
 
 <details>
-<summary>What this does, and what <code>coop accept</code> is for</summary>
+<summary>What this does</summary>
 
 - `coop init` points your coop at **one** board. Everyone in the group uses the same board name.
 - If you were invited to that board and haven't accepted yet, `init` accepts **that invitation** for you (it only ever accepts the board you named).
