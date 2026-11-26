@@ -13,6 +13,42 @@ Spend spare weekly AI subscription tokens (`claude`, `codex`, `gemini`) helping 
                                                                 ──► Draft PR on your repo
 ```
 
+## Quickstart (TL;DR)
+
+Already installed (see [Installation](#installation)) and part of a group? Everything you need day to day:
+
+```bash
+# You want HELP on a repo (the owner):
+coop register                 # once per repo, from inside it
+coop flag 42                  # open issue #42 for help; friends get access automatically
+
+# You want to HELP others (the helper):
+coop accept                   # take pending repo invitations
+coop                          # pick the best open issue, fix it, open a Draft PR
+```
+
+Starting from zero? Jump to [Setup: step by step](#setup-step-by-step).
+
+## Two roles
+
+Everyone in a group plays both roles, depending on the repo:
+
+| | **Owner** (you want help) | **Helper** (you spend your spare tokens) |
+| :-- | :-- | :-- |
+| Where | your repo | a friend's repo |
+| You run | `coop register`, `coop flag`, `coop sync-access` | `coop accept`, `coop list`, `coop` |
+| Tokens spent | none | yours, from your own subscription |
+| End result | a Draft PR appears on your repo for you to review | a Draft PR you opened on their repo |
+
+## Glossary
+
+- **Board**: a small GitHub repo (e.g. `dsleo/coop-board`) holding `repos.toml`, the list of repos in the group. Everyone points `coop` at the same one.
+- **Member**: anyone invited to the board repo. Members are who `coop flag` and `coop sync-access` share your repos with.
+- **GitHub handle**: a GitHub username such as `dsleo` (what appears in `github.com/<handle>`).
+- **Flagged issue**: an issue carrying the `coop-help` label.
+- **Claim**: when a helper starts, the issue is assigned to them and labelled `coop-claimed` so nobody else duplicates the work.
+- **Tier** (`safe` / `verified` / `trusted`): how much freedom the agent gets on someone else's repo. See [Security](#security).
+
 ## Contents
 
 1. [Installation](#installation)
@@ -99,6 +135,8 @@ coop flag 42 --size small
 
 **Access is automatic:** when you flag an issue, `coop` invites every member of the board to that repo with write access (they need it to claim issues and push branches). Opt out with `--no-invite`. Friends run `coop accept` to take the invitation.
 
+Friends then see the issue in `coop list`. When one of them runs `coop`, the issue gets assigned to them and, after a few minutes, a **Draft PR titled `[coop] <issue title>`** appears on your repo. Its description says which provider and tier produced it, the token estimate, and whether the run finished (`Closes #42`) or stopped early (`Refs #42`). Review the diff like any PR, then mark it ready and merge, or close it. If the helper's run fails or changes nothing, the issue is released and goes back to the pool.
+
 Already have flagged issues (for example you added the label by hand)? Run:
 
 ```bash
@@ -122,7 +160,9 @@ coop stats                          # what you've donated
 
 Optional, once you know a friend well: `coop trust alice -l verified` (see [Security](#security)).
 
-`coop` skips your own repos unless you pass `--include-own` (handy for testing).
+As a helper, the first time a friend flags something you'll have a pending invitation to their repo: run `coop accept` (coop can't claim issues or push branches without write access). `coop` skips your own repos unless you pass `--include-own` (handy for testing).
+
+Prefer not to use the CLI to flag? Open the issue on GitHub, click *Labels*, add `coop-help`. If you want friends to get access automatically afterwards, run `coop sync-access`.
 
 ---
 
@@ -150,6 +190,8 @@ There are three levels. The smallest one that applies wins for the cap on a sing
 | **Issue** | label `budget:50k`, or `coop flag 42 --budget 50000` | Max for this one issue. |
 | **Repo** | `coop register --budget 100000` | Default max per issue in this repo. |
 | **Helper session** | `coop auto -t 150000` (default from `coop init -t`) | The helper's own total spare budget. Each issue's cap is `min(session budget left, issue/repo budget)`. |
+
+**Worked example.** Repo default is 100k, one issue has the label `budget:50k`, and a helper runs `coop auto -t 150000`. For that issue the cap is `min(150k left, 50k)` = **50k**; for another issue in the same repo it would be `min(150k left, 100k)` = 100k. After the first run, the helper's session has about 100k left for the next issue.
 
 Token counts are **estimates** (see [Security](#security) for the hard stops: time and turns).
 
